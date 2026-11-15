@@ -1,0 +1,73 @@
+
+name: Build Offline English Tutor APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find and extract Flutter project
+        run: |
+          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" -print -quit)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "Project ZIP not found"
+            exit 1
+          fi
+
+          mkdir -p /tmp/flutter_source
+          unzip -q "$ZIP_FILE" -d /tmp/flutter_source
+
+          PROJECT_DIR=$(find /tmp/flutter_source -name pubspec.yaml -printf '%h\n' | head -1)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "pubspec.yaml not found"
+            exit 1
+          fi
+
+          cp -a "$PROJECT_DIR/." .
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android platform files
+        run: |
+          mkdir -p /tmp/custom
+          cp android/app/src/main/AndroidManifest.xml /tmp/custom/AndroidManifest.xml
+          rm -rf android
+          flutter create --platforms=android --org com.example .
+          cp /tmp/custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-english-tutor-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
+          
